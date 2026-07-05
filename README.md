@@ -22,7 +22,8 @@ Implemented in the initial PC110 patch:
 - PC110 private INT 15h compatibility:
   - `AX=5380h, BH=7fh` returns the IBM/RIOS `SLO` identify signature.
   - `AX=5380h, BX=8300h` returns an initial digitizer resource selector.
-  - `AX=5000h` reports no pending private event.
+  - `AX=5000h, BH=01h, BP=0000h` reports no pending private event.
+  - Other `AX=5000h` private-service variants are accepted for compatibility.
   - `AX=2101h` is accepted for IBM utility compatibility.
 - F1 boot prompt for IBM Easy-Setup.
 - Optional build-time extraction of the compressed IBM Easy-Setup stream from a
@@ -71,7 +72,8 @@ CONFIG_OVERLAY=configs/pc110_smoke_overlay OUT_NAME=pc110-seabios-smoke ./script
 ./scripts/qemu-smoke.sh out/pc110-seabios-smoke.bin
 ```
 
-The boot sector writes `PC110 BIOS BOOT OK` to COM1 and exits via QEMU's
+The boot sector verifies the PC110 private INT 15h identify, digitizer, and
+event-poll paths, writes `PC110 BIOS BOOT OK` to COM1, and exits via QEMU's
 `isa-debug-exit` device.
 
 ## Safety

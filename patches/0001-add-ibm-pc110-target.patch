@@ -77,10 +77,10 @@ index 5c37daf..ca2713c 100644
      }
 diff --git a/src/fw/pc110.c b/src/fw/pc110.c
 new file mode 100644
-index 0000000..f4f5446
+index 0000000..3d3c1b3
 --- /dev/null
 +++ b/src/fw/pc110.c
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,85 @@
 +// IBM Palm Top PC110 compatibility BIOS calls and 16-bit entry shims.
 +//
 +// Copyright (C) 2026 Ahmad Byagowi
@@ -92,7 +92,7 @@ index 0000000..f4f5446
 +#include "types.h" // VISIBLE16
 +#include "x86.h" // hlt
 +
-+#define PC110_INT15_NOEVENT 0x80
++#define PC110_INT15_NOEVENT RET_EUNSUPPORTED
 +
 +int
 +pc110_handle_15(struct bregs *regs)
@@ -106,8 +106,14 @@ index 0000000..f4f5446
 +        set_success(regs);
 +        return 1;
 +    case 0x5000:
-+        // Private wait/event service.  Report no pending event.
-+        set_code_invalid_silent(regs, PC110_INT15_NOEVENT);
++        // Personaware/DOSPM polls this shape as a private event service.
++        if (regs->bh == 0x01 && regs->bp == 0x0000) {
++            regs->bx = 0;
++            regs->es = 0;
++            set_code_invalid_silent(regs, PC110_INT15_NOEVENT);
++        } else {
++            set_success(regs);
++        }
 +        return 1;
 +    case 0x5380:
 +        break;

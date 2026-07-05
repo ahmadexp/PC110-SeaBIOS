@@ -15,6 +15,7 @@ These are the hardware facts this BIOS target currently uses.
 | Power MCU | `0xec` index, `0xed` data | probe register `0x00` |
 | PCMCIA controller | `0x3e0` index, `0x3e1` data | probe chip ID, expected `0x83` on PC110 |
 | Digitizer resource call | INT 15h `AX=5380h, BX=8300h` | currently returns default selector `CL=0` |
+| Private event poll | INT 15h `AX=5000h, BH=01h, BP=0000h` | no-event status `AH=86h`, `CF=1`, `ES:BX=0000:0000` |
 | PC110 identify call | INT 15h `AX=5380h, BH=7fh` | returns `BH='S', BL='L', CL='O'` |
 | Easy-Setup load address | physical `0x50000` | decompressed runtime target |
 | Easy-Setup entry | `5000:0000` | entered after VGA mode `12h` |
@@ -22,4 +23,3 @@ These are the hardware facts this BIOS target currently uses.
 The current target intentionally avoids write-heavy chipset initialization until
 POST behavior is observed on real hardware or a PC110 emulator with enough
 chipset coverage.
-

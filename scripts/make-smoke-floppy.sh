@@ -29,20 +29,74 @@ start:
     sti
 
     call serial_init
+    call pc110_int15_smoke
+    jnc .ok
+    mov si, fail_msg
+    call serial_puts
+    mov ax, 0x0011
+    jmp .exit
+.ok:
     mov si, msg
-.put:
-    lodsb
-    test al, al
-    jz .done
-    call serial_putc
-    jmp .put
-.done:
+    call serial_puts
     mov ax, 0x0010
+.exit:
     mov dx, DEBUG_EXIT
     out dx, ax
 .halt:
     hlt
     jmp .halt
+
+pc110_int15_smoke:
+    mov ax, 0x5380
+    mov bx, 0x7f00
+    int 0x15
+    jc .fail
+    cmp bh, 'S'
+    jne .fail
+    cmp bl, 'L'
+    jne .fail
+    cmp cl, 'O'
+    jne .fail
+
+    mov ax, 0x5380
+    mov bx, 0x8300
+    int 0x15
+    jc .fail
+    cmp cl, 0x00
+    jne .fail
+
+    mov ax, 0x1234
+    mov es, ax
+    mov ax, 0x5000
+    mov bx, 0x0100
+    xor bp, bp
+    int 0x15
+    jnc .fail
+    cmp ah, 0x86
+    jne .fail
+    cmp bx, 0x0000
+    jne .fail
+    mov ax, es
+    cmp ax, 0x0000
+    jne .fail
+
+    mov ax, 0x5000
+    xor bx, bx
+    mov bp, 0x0001
+    int 0x15
+    jc .fail
+
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    clc
+    ret
+.fail:
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    stc
+    ret
 
 serial_init:
     mov dx, SERIAL + 1
@@ -68,6 +122,15 @@ serial_init:
     out dx, al
     ret
 
+serial_puts:
+    lodsb
+    test al, al
+    jz .done
+    call serial_putc
+    jmp serial_puts
+.done:
+    ret
+
 serial_putc:
     push ax
 .wait:
@@ -81,6 +144,7 @@ serial_putc:
     ret
 
 msg db "PC110 BIOS BOOT OK", 13, 10, 0
+fail_msg db "PC110 BIOS INT15 FAIL", 13, 10, 0
 
 times 510-($-$$) db 0
 dw 0xaa55
@@ -95,4 +159,3 @@ img[:len(boot)] = boot
 open(sys.argv[2], "wb").write(img)
 PY
 echo "$OUT"
-
