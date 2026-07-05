@@ -23,7 +23,23 @@ if [[ "${CONTAINER:-0}" == "1" ]]; then
 fi
 
 SRC="$("$ROOT/scripts/apply-patches.sh")"
-cp "$ROOT/configs/pc110_defconfig" "$SRC/.config"
+CONFIG_FILE="${CONFIG_FILE:-$ROOT/configs/pc110_defconfig}"
+CONFIG_OVERLAY="${CONFIG_OVERLAY:-}"
+OUT_NAME="${OUT_NAME:-pc110-seabios}"
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "error: config file not found: $CONFIG_FILE" >&2
+    exit 1
+fi
+
+cp "$CONFIG_FILE" "$SRC/.config"
+if [[ -n "$CONFIG_OVERLAY" ]]; then
+    if [[ ! -f "$CONFIG_OVERLAY" ]]; then
+        echo "error: config overlay not found: $CONFIG_OVERLAY" >&2
+        exit 1
+    fi
+    cat "$CONFIG_OVERLAY" >> "$SRC/.config"
+fi
 
 if [[ -n "${PC110_BIOS_DUMP:-}" ]]; then
     python3 "$ROOT/scripts/extract-pc110-assets.py" \
@@ -44,6 +60,5 @@ make -C "$SRC" "${make_args[@]}" olddefconfig
 make -C "$SRC" "${make_args[@]}" -j"$jobs"
 
 mkdir -p "$ROOT/out"
-cp "$SRC/out/bios.bin" "$ROOT/out/pc110-seabios.bin"
-ls -lh "$ROOT/out/pc110-seabios.bin"
-
+cp "$SRC/out/bios.bin" "$ROOT/out/$OUT_NAME.bin"
+ls -lh "$ROOT/out/$OUT_NAME.bin"

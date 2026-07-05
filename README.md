@@ -43,6 +43,12 @@ macOS or other hosts without a 32-bit ELF toolchain can build in a container:
 CONTAINER=1 ./scripts/build.sh
 ```
 
+Debug serial build:
+
+```sh
+CONFIG_OVERLAY=configs/pc110_debug_overlay OUT_NAME=pc110-seabios-debug ./scripts/build.sh
+```
+
 To include the IBM Easy-Setup payload from your own 256 KiB dump:
 
 ```sh
@@ -54,6 +60,19 @@ The output is:
 ```text
 out/pc110-seabios.bin
 ```
+
+## Smoke Test
+
+CI also builds a smoke-test BIOS with the interactive boot menu disabled, then
+boots it in QEMU from a tiny floppy image:
+
+```sh
+CONFIG_OVERLAY=configs/pc110_smoke_overlay OUT_NAME=pc110-seabios-smoke ./scripts/build.sh
+./scripts/qemu-smoke.sh out/pc110-seabios-smoke.bin
+```
+
+The boot sector writes `PC110 BIOS BOOT OK` to COM1 and exits via QEMU's
+`isa-debug-exit` device.
 
 ## Safety
 
@@ -71,4 +90,3 @@ b52ca86e094d19b58e2304417787e96b940e39c6
 ```
 
 PC110 changes live in `patches/`.
-

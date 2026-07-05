@@ -1,0 +1,10 @@
+
+# The smoke test should prove POST and INT 19h boot without relying on the
+# interactive menu timer path.
+# CONFIG_BOOTMENU is not set
+# CONFIG_BOOTSPLASH is not set
+CONFIG_DEBUG_LEVEL=8
+CONFIG_DEBUG_SERIAL=y
+CONFIG_DEBUG_SERIAL_PORT=0x3f8
+# CONFIG_DEBUG_SERIAL_MMIO is not set
+

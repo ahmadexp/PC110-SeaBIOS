@@ -13,11 +13,19 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git gcc-multilib iasl python3 python-is-python3
+          sudo apt-get install -y build-essential git gcc-multilib iasl nasm python3 python-is-python3 qemu-system-x86
       - name: Build PC110 SeaBIOS
         run: ./scripts/build.sh
+      - name: Build debug PC110 SeaBIOS
+        run: CONFIG_OVERLAY=configs/pc110_debug_overlay OUT_NAME=pc110-seabios-debug ./scripts/build.sh
+      - name: Build smoke-test PC110 SeaBIOS
+        run: CONFIG_OVERLAY=configs/pc110_smoke_overlay OUT_NAME=pc110-seabios-smoke ./scripts/build.sh
+      - name: QEMU smoke test
+        run: ./scripts/qemu-smoke.sh out/pc110-seabios-smoke.bin
       - uses: actions/upload-artifact@v4
         with:
           name: pc110-seabios
-          path: out/pc110-seabios.bin
-
+          path: |
+            out/pc110-seabios.bin
+            out/pc110-seabios-debug.bin
+            out/pc110-seabios-smoke.bin
