@@ -1,0 +1,8 @@
+build/
+out/
+*.bin
+*.rom
+*.fd
+*.img
+*.log
+

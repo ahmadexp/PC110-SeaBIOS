@@ -1,0 +1,506 @@
+diff --git a/Makefile b/Makefile
+index 4ccc2be..2b465ad 100644
+--- a/Makefile
++++ b/Makefile
+@@ -35,6 +35,7 @@ SRCBOTH=misc.c stacks.c output.c string.c block.c cdrom.c disk.c	\
+     hw/usb-uhci.c hw/usb-ohci.c hw/usb-ehci.c hw/usb-hid.c		\
+     hw/usb-msc.c hw/usb-uas.c hw/blockcmd.c hw/floppy.c hw/ata.c	\
+     hw/ramdisk.c hw/lsi-scsi.c hw/esp-scsi.c hw/megasas.c		\
++    fw/pc110.c								\
+     hw/mpt-scsi.c
+ SRC16=$(SRCBOTH)
+ SRC32FLAT=$(SRCBOTH) post.c e820map.c malloc.c romfile.c x86.c		\
+@@ -46,7 +47,8 @@ SRC32FLAT=$(SRCBOTH) post.c e820map.c malloc.c romfile.c x86.c		\
+     fw/mtrr.c fw/xen.c fw/acpi.c fw/mptable.c fw/pirtable.c		\
+     fw/smbios.c fw/romfile_loader.c fw/dsdt_parser.c hw/virtio-ring.c	\
+     hw/virtio-pci.c hw/virtio-mmio.c hw/virtio-blk.c hw/virtio-scsi.c	\
+-    hw/tpm_drivers.c hw/nvme.c sha256.c sha512.c
++    hw/tpm_drivers.c hw/nvme.c sha256.c sha512.c			\
++    fw/pc110init.c fw/pc110_easysetup_blob.c
+ SRC32SEG=string.c output.c pcibios.c apm.c stacks.c hw/pci.c hw/serialio.c
+ DIRS=src src/hw src/fw vgasrc
+ 
+@@ -97,6 +99,7 @@ endif
+ 
+ target-y :=
+ target-$(CONFIG_QEMU) += $(OUT)bios.bin
++target-$(CONFIG_PC110) += $(OUT)bios.bin
+ target-$(CONFIG_CSM) += $(OUT)Csm16.bin
+ target-$(CONFIG_COREBOOT) += $(OUT)bios.bin.elf
+ target-$(CONFIG_BUILD_VGABIOS) += $(OUT)vgabios.bin
+diff --git a/src/Kconfig b/src/Kconfig
+index 332b52d..b042539 100644
+--- a/src/Kconfig
++++ b/src/Kconfig
+@@ -19,6 +19,13 @@ choice
+         help
+             Configure for an emulated machine (QEMU, Xen, KVM, or Bochs).
+ 
++    config PC110
++        bool "Build for IBM Palm Top PC110"
++        help
++            Configure as a standalone legacy BIOS for the IBM Palm Top PC110
++            hardware.  This target reuses SeaBIOS' PC/AT BIOS services while
++            adding PC110-specific memory sizing, setup, and private BIOS calls.
++
+     config CSM
+        bool "Build as Compatibility Support Module for EFI BIOS"
+        help
+diff --git a/src/boot.c b/src/boot.c
+index 5c37daf..ca2713c 100644
+--- a/src/boot.c
++++ b/src/boot.c
+@@ -716,12 +716,22 @@ interactive_bootmenu(void)
+             ;
+ 
+         char *bootmsg = romfile_loadfile("etc/boot-menu-message", NULL);
+-        printf("%s", bootmsg ?: "\nPress ESC for boot menu.\n\n");
+-        free(bootmsg);
++        if (bootmsg) {
++            printf("%s", bootmsg);
++            free(bootmsg);
++        } else if (CONFIG_PC110) {
++            printf("\nPress F1 for IBM Easy-Setup, ESC for boot menu.\n\n");
++        } else {
++            printf("\nPress ESC for boot menu.\n\n");
++        }
+ 
+         enable_bootsplash();
+         scan_code = get_keystroke(menutime);
+         disable_bootsplash();
++        if (CONFIG_PC110 && scan_code == 0x3b) {
++            pc110_run_easysetup();
++            return;
++        }
+         if (scan_code != menukey)
+             return;
+     }
+diff --git a/src/fw/pc110.c b/src/fw/pc110.c
+new file mode 100644
+index 0000000..f4f5446
+--- /dev/null
++++ b/src/fw/pc110.c
+@@ -0,0 +1,79 @@
++// IBM Palm Top PC110 compatibility BIOS calls and 16-bit entry shims.
++//
++// Copyright (C) 2026 Ahmad Byagowi
++//
++// This file may be distributed under the terms of the GNU LGPLv3 license.
++
++#include "bregs.h" // struct bregs
++#include "config.h" // CONFIG_*
++#include "types.h" // VISIBLE16
++#include "x86.h" // hlt
++
++#define PC110_INT15_NOEVENT 0x80
++
++int
++pc110_handle_15(struct bregs *regs)
++{
++    if (!CONFIG_PC110)
++        return 0;
++
++    switch (regs->ax) {
++    case 0x2101:
++        // PC110 private service accepted by IBM utilities during setup.
++        set_success(regs);
++        return 1;
++    case 0x5000:
++        // Private wait/event service.  Report no pending event.
++        set_code_invalid_silent(regs, PC110_INT15_NOEVENT);
++        return 1;
++    case 0x5380:
++        break;
++    default:
++        return 0;
++    }
++
++    if (regs->bh == 0x7f) {
++        // IBM/RIOS vendor identify: PS2.EXE, ULTRACHG, and local tools look
++        // for BH='S', BL='L', CL='O'.
++        regs->bh = 'S';
++        regs->bl = 'L';
++        regs->cl = 'O';
++        set_success(regs);
++        return 1;
++    }
++
++    if (regs->bx == 0x8300) {
++        // Digitizer resource selector consumed by INKDRV-style software.
++        // CL encoding: bits 0-1 select base from 05e0/15e0/25e0/35e0,
++        // bits 4-6 select IRQ from 3/4/10/11/12/15/5/7.
++        regs->cl = 0x00; // 0x05e0, IRQ3
++        set_success(regs);
++        return 1;
++    }
++
++    set_code_invalid_silent(regs, RET_EUNSUPPORTED);
++    return 1;
++}
++
++void VISIBLE16 __noreturn
++pc110_enter_easysetup(void)
++{
++    asm volatile(
++        "cli\n"
++        "movw $0x9000, %%ax\n"
++        "movw %%ax, %%ss\n"
++        "movw $0xfffe, %%sp\n"
++        "xorw %%ax, %%ax\n"
++        "movw %%ax, %%ds\n"
++        "movw %%ax, %%es\n"
++        "pushw $0xf000\n"
++        "pushw $0xfff0\n"
++        "sti\n"
++        "ljmpw $0x5000, $0x0000\n"
++        :
++        :
++        : "ax", "cc", "memory");
++
++    for (;;)
++        hlt();
++}
+diff --git a/src/fw/pc110_easysetup_blob.c b/src/fw/pc110_easysetup_blob.c
+new file mode 100644
+index 0000000..e7a6feb
+--- /dev/null
++++ b/src/fw/pc110_easysetup_blob.c
+@@ -0,0 +1,10 @@
++// Placeholder PC110 Easy-Setup payload.
++//
++// A build may replace this file with a generated blob extracted from a
++// legally obtained IBM PC110 BIOS image.  The generated blob stores the
++// original compressed LZW stream, not IBM code in this repository.
++
++#include "types.h" // u8, u32
++
++const u8 pc110_easysetup_lzw[1] = { 0 };
++const u32 pc110_easysetup_lzw_len = 0;
+diff --git a/src/fw/pc110init.c b/src/fw/pc110init.c
+new file mode 100644
+index 0000000..ba97ee5
+--- /dev/null
++++ b/src/fw/pc110init.c
+@@ -0,0 +1,263 @@
++// IBM Palm Top PC110 platform bring-up and Easy-Setup loader.
++//
++// Copyright (C) 2026 Ahmad Byagowi
++//
++// This file may be distributed under the terms of the GNU LGPLv3 license.
++
++#include "biosvar.h" // FUNC16
++#include "bregs.h" // struct bregs
++#include "config.h" // CONFIG_*
++#include "e820map.h" // e820_add
++#include "fw/paravirt.h" // RamSize
++#include "hw/rtc.h" // rtc_read
++#include "malloc.h" // malloc_tmp
++#include "output.h" // dprintf, printf
++#include "stacks.h" // call16_int, farcall16
++#include "string.h" // memset
++#include "types.h" // u8, u16, u32
++#include "x86.h" // F_IF, inb, outb
++
++#define PC110_EASYSETUP_LOAD 0x50000
++#define PC110_EASYSETUP_MAX  0x40000
++
++#define PC110_LZW_CLEAR 0x100
++#define PC110_LZW_END   0x101
++#define PC110_LZW_FIRST 0x102
++
++extern const u8 pc110_easysetup_lzw[];
++extern const u32 pc110_easysetup_lzw_len;
++extern void pc110_enter_easysetup(void);
++
++static u8
++pc110_scamp_read(u8 index)
++{
++    u32 flags = save_flags();
++    irq_disable();
++
++    outb(0x00, 0x23);
++    outb(0x80, 0x22);
++    outw(0x0080, 0x22);
++    outb(index & 0x7f, 0x74);
++    u8 value = inb(0x76);
++
++    u16 gate = inw(0x22);
++    gate &= 0xfffd;
++    gate |= 0x0100;
++    outw(gate, 0x22);
++
++    restore_flags(flags);
++    return value;
++}
++
++static u8
++pc110_pmcu_read(u8 index)
++{
++    outb(index, 0x00ec);
++    return inb(0x00ed);
++}
++
++static u8
++pc110_pcic_read(u8 index)
++{
++    outb(index, 0x03e0);
++    return inb(0x03e1);
++}
++
++void
++pc110_preinit(void)
++{
++    if (!CONFIG_PC110)
++        return;
++
++    u32 extkb = rtc_read(0x30) | (rtc_read(0x31) << 8);
++    if (!extkb || extkb == 0xffff)
++        extkb = 3 * 1024;
++
++    RamSize = 0x100000 + extkb * 1024;
++    e820_add(0, 0x000a0000, E820_RAM);
++    e820_add(0x000a0000, 0x00060000, E820_RESERVED);
++    e820_add(0x00100000, extkb * 1024, E820_RAM);
++
++    dprintf(1, "PC110: RamSize 0x%08x (%u KB extended from CMOS 30/31)\n",
++            RamSize, extkb);
++}
++
++void
++pc110_platform_setup(void)
++{
++    if (!CONFIG_PC110)
++        return;
++
++    u8 scamp_s = pc110_scamp_read(0x7a);
++    u8 scamp_l = pc110_scamp_read(0x7b);
++    u8 pmcu0 = pc110_pmcu_read(0x00);
++    u8 pcic_id = pc110_pcic_read(0x00);
++
++    dprintf(1, "PC110: SCAMP signature %02x %02x, PMCU[00]=%02x, PCIC id=%02x\n",
++            scamp_s, scamp_l, pmcu0, pcic_id);
++    dprintf(1, "PC110: CMOS click=%02x lcd=%02x power=%02x boot=%02x/%02x\n",
++            rtc_read(0x44), rtc_read(0x70), rtc_read(0x72),
++            rtc_read(0x1d), rtc_read(0x1e));
++}
++
++static int
++pc110_lzw_read_code(const u8 *src, u32 len, u32 *bitpos, u8 bits)
++{
++    if (*bitpos + bits > len * 8)
++        return -1;
++
++    u32 bytepos = *bitpos >> 3;
++    u8 shift = *bitpos & 7;
++    u32 value = 0;
++    u8 i;
++    for (i = 0; i < 3 && bytepos + i < len; i++)
++        value |= src[bytepos + i] << (8 * i);
++
++    *bitpos += bits;
++    value >>= shift;
++    return value & ((1 << bits) - 1);
++}
++
++static int
++pc110_lzw_expand(u16 code, u16 next_code, u16 *prefix, u8 *suffix,
++                 u8 *stack, u8 *first)
++{
++    u16 depth = 0;
++    while (code >= 0x100) {
++        if (code >= next_code || depth >= 4096)
++            return -1;
++        stack[depth++] = suffix[code];
++        code = prefix[code];
++    }
++
++    if (depth >= 4096)
++        return -1;
++    stack[depth++] = code & 0xff;
++    *first = stack[depth - 1];
++    return depth;
++}
++
++static int
++pc110_lzw_output(u8 *dst, u32 *outpos, u32 maxout, u8 *stack, int depth)
++{
++    while (depth) {
++        if (*outpos >= maxout)
++            return -1;
++        dst[(*outpos)++] = stack[--depth];
++    }
++    return 0;
++}
++
++static int
++pc110_lzw_decode_easysetup(u8 *dst, u32 maxout)
++{
++    const u8 *src = pc110_easysetup_lzw;
++    u32 len = pc110_easysetup_lzw_len;
++    u16 *prefix = malloc_tmp(4096 * sizeof(*prefix));
++    u8 *suffix = malloc_tmp(4096 * sizeof(*suffix));
++    u8 *stack = malloc_tmp(4096);
++    if (!prefix || !suffix || !stack)
++        return -1;
++
++    u8 bits = 9;
++    u16 next_code = PC110_LZW_FIRST;
++    u16 grow_at = 0x200;
++    int old = -1;
++    u8 first = 0;
++    u32 bitpos = 0;
++    u32 outpos = 0;
++
++    for (;;) {
++        int code = pc110_lzw_read_code(src, len, &bitpos, bits);
++        if (code < 0)
++            return -1;
++        if (code == PC110_LZW_END)
++            return outpos;
++        if (code == PC110_LZW_CLEAR) {
++            bits = 9;
++            next_code = PC110_LZW_FIRST;
++            grow_at = 0x200;
++            old = -1;
++
++            code = pc110_lzw_read_code(src, len, &bitpos, bits);
++            if (code < 0 || code >= 0x100)
++                return -1;
++            if (outpos >= maxout)
++                return -1;
++            dst[outpos++] = code;
++            old = code;
++            first = code;
++            continue;
++        }
++
++        int special = 0;
++        u8 cur_first = 0;
++        int depth;
++        if (code < next_code) {
++            depth = pc110_lzw_expand(code, next_code, prefix, suffix,
++                                     stack, &cur_first);
++        } else if (code == next_code && old >= 0) {
++            special = 1;
++            depth = pc110_lzw_expand(old, next_code, prefix, suffix,
++                                     stack, &cur_first);
++        } else {
++            return -1;
++        }
++        if (depth < 0 || pc110_lzw_output(dst, &outpos, maxout, stack, depth))
++            return -1;
++        if (special) {
++            if (outpos >= maxout)
++                return -1;
++            dst[outpos++] = first;
++            cur_first = first;
++        }
++
++        if (old >= 0 && next_code < 4096) {
++            prefix[next_code] = old;
++            suffix[next_code] = cur_first;
++            next_code++;
++            if (next_code >= grow_at && bits < 12) {
++                bits++;
++                grow_at <<= 1;
++            }
++        }
++
++        old = code;
++        first = cur_first;
++    }
++}
++
++int
++pc110_run_easysetup(void)
++{
++    if (!CONFIG_PC110)
++        return 0;
++
++    if (!pc110_easysetup_lzw_len) {
++        printf("PC110 Easy-Setup payload is not bundled in this BIOS.\n");
++        printf("Rebuild with PC110_BIOS_DUMP=/path/to/pc110_bios.bin.\n");
++        return 0;
++    }
++
++    u8 *dst = (void *)PC110_EASYSETUP_LOAD;
++    int size = pc110_lzw_decode_easysetup(dst, PC110_EASYSETUP_MAX);
++    if (size <= 0) {
++        printf("PC110 Easy-Setup payload failed to decompress.\n");
++        return 0;
++    }
++
++    dprintf(1, "PC110: Easy-Setup decompressed to %05x (%d bytes)\n",
++            PC110_EASYSETUP_LOAD, size);
++
++    struct bregs br;
++    memset(&br, 0, sizeof(br));
++    br.flags = F_IF;
++    br.ax = 0x0012;
++    call16_int(0x10, &br);
++
++    memset(&br, 0, sizeof(br));
++    br.flags = F_IF;
++    br.code = FUNC16(pc110_enter_easysetup);
++    farcall16(&br);
++    return 1;
++}
+diff --git a/src/post.c b/src/post.c
+index f93106a..ed7e3ab 100644
+--- a/src/post.c
++++ b/src/post.c
+@@ -148,6 +148,7 @@ platform_hardware_setup(void)
+     // Platform specific setup
+     qemu_platform_setup();
+     coreboot_platform_setup();
++    pc110_platform_setup();
+ 
+     // Setup timers and periodic clock interrupt
+     timer_setup();
+@@ -308,6 +309,7 @@ dopost(void)
+     // Detect ram and setup internal malloc.
+     qemu_preinit();
+     coreboot_preinit();
++    pc110_preinit();
+     malloc_preinit();
+ 
+     // Relocate initialization code and call maininit().
+@@ -320,7 +322,7 @@ dopost(void)
+ void VISIBLE32FLAT
+ handle_post(void)
+ {
+-    if (!CONFIG_QEMU && !CONFIG_COREBOOT)
++    if (!CONFIG_QEMU && !CONFIG_COREBOOT && !CONFIG_PC110)
+         return;
+ 
+     serial_debug_preinit();
+diff --git a/src/system.c b/src/system.c
+index 438e60e..b4d0518 100644
+--- a/src/system.c
++++ b/src/system.c
+@@ -335,6 +335,8 @@ void VISIBLE16
+ handle_15(struct bregs *regs)
+ {
+     debug_enter(regs, DEBUG_HDL_15);
++    if (pc110_handle_15(regs))
++        return;
+     switch (regs->ah) {
+     case 0x24: handle_1524(regs); break;
+     case 0x4f: handle_154f(regs); break;
+diff --git a/src/util.h b/src/util.h
+index aff8e88..fc2bc4c 100644
+--- a/src/util.h
++++ b/src/util.h
+@@ -117,6 +117,12 @@ struct cb_header;
+ void *find_cb_subtable(struct cb_header *cbh, u32 tag);
+ struct cb_header *find_cb_table(void);
+ 
++// fw/pc110.c, fw/pc110init.c
++void pc110_preinit(void);
++void pc110_platform_setup(void);
++int pc110_handle_15(struct bregs *regs);
++int pc110_run_easysetup(void);
++
+ // fw/csm.c
+ int csm_bootprio_fdc(struct pci_device *pci, int port, int fdid);
+ int csm_bootprio_ata(struct pci_device *pci, int chanid, int slave);

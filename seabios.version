@@ -1,0 +1,4 @@
+SEABIOS_REPO=https://github.com/coreboot/seabios.git
+SEABIOS_TAG=rel-1.17.0
+SEABIOS_COMMIT=b52ca86e094d19b58e2304417787e96b940e39c6
+

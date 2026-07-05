@@ -1,0 +1,23 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pc110-seabios:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git gcc-multilib iasl python3 python-is-python3
+      - name: Build PC110 SeaBIOS
+        run: ./scripts/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pc110-seabios
+          path: out/pc110-seabios.bin
+
