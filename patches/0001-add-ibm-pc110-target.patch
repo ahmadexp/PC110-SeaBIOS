@@ -483,6 +483,31 @@ index 8930616..2af44d9 100644
          return;
      dprintf(3, "locking shadow ram\n");
  
+diff --git a/src/misc.c b/src/misc.c
+index b511730..b60cf8c 100644
+--- a/src/misc.c
++++ b/src/misc.c
+@@ -112,15 +112,15 @@ handle_75(void)
+ struct bios_config_table_s BIOS_CONFIG_TABLE VARFSEGFIXED(0xe6f5) = {
+     .size     = sizeof(BIOS_CONFIG_TABLE) - 2,
+     .model    = BUILD_MODEL_ID,
+-    .submodel = BUILD_SUBMODEL_ID,
+-    .biosrev  = BUILD_BIOS_REVISION,
++    .submodel = CONFIG_PC110 ? 0x01 : BUILD_SUBMODEL_ID,
++    .biosrev  = CONFIG_PC110 ? 0x00 : BUILD_BIOS_REVISION,
+     .feature1 = (
+         CBT_F1_2NDPIC | CBT_F1_RTC | CBT_F1_EBDA
+         | (CONFIG_KBD_CALL_INT15_4F ? CBT_F1_INT154F : 0)),
+     .feature2 = CBT_F2_INT1609,
+-    .feature3 = 0,
+-    .feature4 = 0,
+-    .feature5 = 0,
++    .feature3 = CONFIG_PC110 ? 0x10 : 0,
++    .feature4 = CONFIG_PC110 ? 0x08 : 0,
++    .feature5 = CONFIG_PC110 ? 0x01 : 0,
+ };
+ 
+ 
 diff --git a/src/post.c b/src/post.c
 index f93106a..ed7e3ab 100644
 --- a/src/post.c

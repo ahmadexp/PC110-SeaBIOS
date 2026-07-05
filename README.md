@@ -25,6 +25,7 @@ Implemented in the initial PC110 patch:
   - `AX=5000h, BH=01h, BP=0000h` reports no pending private event.
   - Other `AX=5000h` private-service variants are accepted for compatibility.
   - `AX=2101h` is accepted for IBM utility compatibility.
+  - `AH=C0h` reports a PC110-shaped BIOS system configuration table.
 - F1 boot prompt for IBM Easy-Setup.
 - Optional build-time extraction of the compressed IBM Easy-Setup stream from a
   legally obtained PC110 BIOS dump, followed by in-BIOS LZW decompression to
@@ -72,9 +73,9 @@ CONFIG_OVERLAY=configs/pc110_smoke_overlay OUT_NAME=pc110-seabios-smoke ./script
 ./scripts/qemu-smoke.sh out/pc110-seabios-smoke.bin
 ```
 
-The boot sector verifies the PC110 private INT 15h identify, digitizer, and
-event-poll paths, writes `PC110 BIOS BOOT OK` to COM1, and exits via QEMU's
-`isa-debug-exit` device.
+The boot sector verifies the PC110 private INT 15h identify, digitizer,
+event-poll, and system-configuration paths, writes `PC110 BIOS BOOT OK` to COM1,
+and exits via QEMU's `isa-debug-exit` device.
 
 ## Safety
 

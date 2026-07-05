@@ -86,11 +86,39 @@ pc110_int15_smoke:
     int 0x15
     jc .fail
 
+    mov ah, 0xc0
+    int 0x15
+    jc .fail
+    push ds
+    mov ax, es
+    mov ds, ax
+    cmp word [bx], 0x0008
+    jne .fail_pop_ds
+    cmp byte [bx + 2], 0xfc
+    jne .fail_pop_ds
+    cmp byte [bx + 3], 0x01
+    jne .fail_pop_ds
+    cmp byte [bx + 4], 0x00
+    jne .fail_pop_ds
+    cmp byte [bx + 5], 0x74
+    jne .fail_pop_ds
+    cmp byte [bx + 6], 0x40
+    jne .fail_pop_ds
+    cmp byte [bx + 7], 0x10
+    jne .fail_pop_ds
+    cmp byte [bx + 8], 0x08
+    jne .fail_pop_ds
+    cmp byte [bx + 9], 0x01
+    jne .fail_pop_ds
+    pop ds
+
     xor ax, ax
     mov ds, ax
     mov es, ax
     clc
     ret
+.fail_pop_ds:
+    pop ds
 .fail:
     xor ax, ax
     mov ds, ax

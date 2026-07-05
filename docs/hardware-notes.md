@@ -17,6 +17,7 @@ These are the hardware facts this BIOS target currently uses.
 | Digitizer resource call | INT 15h `AX=5380h, BX=8300h` | currently returns default selector `CL=0` |
 | Private event poll | INT 15h `AX=5000h, BH=01h, BP=0000h` | no-event status `AH=86h`, `CF=1`, `ES:BX=0000:0000` |
 | PC110 identify call | INT 15h `AX=5380h, BH=7fh` | returns `BH='S', BL='L', CL='O'` |
+| System configuration table | INT 15h `AH=C0h` | model `FCh`, submodel `01h`, PC110 feature bytes |
 | Easy-Setup load address | physical `0x50000` | decompressed runtime target |
 | Easy-Setup entry | `5000:0000` | entered after VGA mode `12h` |
 
