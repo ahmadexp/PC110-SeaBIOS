@@ -8,3 +8,5 @@ CONFIG_DEBUG_SERIAL=y
 CONFIG_DEBUG_SERIAL_PORT=0x3f8
 # CONFIG_DEBUG_SERIAL_MMIO is not set
 
+# The QEMU pc machine needs PAM shadow unlocks before SeaBIOS can relocate.
+CONFIG_QEMU_HARDWARE=y
