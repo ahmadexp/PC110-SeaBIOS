@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIOS="${1:-$ROOT/out/pc110-seabios-debug.bin}"
 QEMU="${QEMU:-qemu-system-i386}"
+QEMU_MACHINE="${QEMU_MACHINE:-pc}"
 SMOKE_IMG="${SMOKE_IMG:-$ROOT/build/smoke/pc110-smoke.img}"
 SERIAL_LOG="${SERIAL_LOG:-$ROOT/build/smoke/serial.log}"
 QEMU_LOG="${QEMU_LOG:-$ROOT/build/smoke/qemu.log}"
@@ -22,12 +23,12 @@ rm -f "$SERIAL_LOG" "$QEMU_LOG"
 
 set +e
 timeout 30s "$QEMU" \
-    -M isapc \
+    -M "$QEMU_MACHINE" \
     -m 20M \
     -cpu 486 \
     -bios "$BIOS" \
-    -drive "file=$SMOKE_IMG,format=raw,if=floppy" \
-    -boot a \
+    -drive "file=$SMOKE_IMG,format=raw,if=ide,index=0,media=disk" \
+    -boot c \
     -display none \
     -serial "file:$SERIAL_LOG" \
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
