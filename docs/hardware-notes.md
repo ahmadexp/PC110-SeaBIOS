@@ -5,9 +5,11 @@ These are the hardware facts this BIOS target currently uses.
 | Area | Access | Current use |
 | --- | --- | --- |
 | System controller | VL82C420 / SCAMP IV | target chipset |
+| POST config latch | `0x4f` | recovered sequence `11 66 70 0a 1e b6 8f 65 bf ff` when SCAMP signature is present |
 | SCAMP config gate | `0x22/0x23` | unlock/relock for indexed reads |
 | SCAMP indexed config | `0x74` index, `0x76` data | probe signature at `0x7a/0x7b` (`53 4c`, "SL") |
 | RAM size | CMOS `0x30/0x31` | extended KB above 1 MiB |
+| CMOS checksum | CMOS `0x10..0x2f` | POST reports calculated/stored AT-style checksum |
 | Boot order | CMOS `0x1d/0x1e` | logged, not yet enforced |
 | Keyboard click | CMOS `0x44` bitfield | logged |
 | LCD status panel | CMOS `0x70` | logged |
@@ -21,6 +23,6 @@ These are the hardware facts this BIOS target currently uses.
 | Easy-Setup load address | physical `0x50000` | decompressed runtime target |
 | Easy-Setup entry | `5000:0000` | entered after VGA mode `12h` |
 
-The current target intentionally avoids write-heavy chipset initialization until
-POST behavior is observed on real hardware or a PC110 emulator with enough
-chipset coverage.
+The POST stage intentionally avoids undocumented direct writes whose values are
+not yet recovered, including the noted `0x8b`, `0x98`, and `0xf1` paths.  The
+known `0x4f` sequence is skipped automatically on QEMU smoke hardware.

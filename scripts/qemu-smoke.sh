@@ -55,4 +55,10 @@ if ! grep -q "PC110 BIOS BOOT OK" "$SERIAL_LOG"; then
     exit 1
 fi
 
+if ! grep -q "PC110 POST complete" "$SERIAL_LOG"; then
+    echo "error: PC110 POST completion marker not found on serial output" >&2
+    tail -n 240 "$SERIAL_LOG" >&2 || true
+    exit 1
+fi
+
 echo "QEMU smoke test passed"

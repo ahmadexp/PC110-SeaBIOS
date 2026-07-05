@@ -14,6 +14,11 @@ Implemented in the initial PC110 patch:
 
 - SeaBIOS `PC110` build target.
 - PC110 RAM sizing from CMOS `0x30/0x31`, with a conservative fallback.
+- PC110 POST stage:
+  - CMOS `0x10..0x2d` checksum reporting.
+  - SCAMP, power MCU, and PCIC presence probes.
+  - recovered VL82C420 config-latch sequence `11 66 70 0a 1e b6 8f 65 bf ff`
+    when the PC110 chipset signature is present.
 - PC110 hardware probe logging for:
   - VL82C420 / SCAMP config signature via `0x22/0x23` gate and `0x74/0x76`.
   - power MCU register `0x00` via `0xec/0xed`.
@@ -74,8 +79,9 @@ CONFIG_OVERLAY=configs/pc110_smoke_overlay OUT_NAME=pc110-seabios-smoke ./script
 ```
 
 The boot sector verifies the PC110 private INT 15h identify, digitizer,
-event-poll, and system-configuration paths, writes `PC110 BIOS BOOT OK` to COM1,
-and exits via QEMU's `isa-debug-exit` device.
+event-poll, and system-configuration paths.  The smoke runner also requires the
+PC110 POST completion marker before accepting `PC110 BIOS BOOT OK` from COM1
+and exiting via QEMU's `isa-debug-exit` device.
 
 ## Safety
 

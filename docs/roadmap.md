@@ -13,6 +13,8 @@
 - Confirm reset vector, ROM mapping, RAM sizing, IVT/BDA setup, PIT/PIC/RTC,
   keyboard controller, and INT 13h CF boot.
 - Capture logs from SCAMP, power MCU, PCIC, and CMOS probes.
+- Keep expanding the PC110 POST stage as hardware traces recover safe register
+  values for `0x8b`, `0x98`, `0xf1`, and SCAMP indexed writes.
 
 ## Phase 2: IBM BIOS Parity
 
@@ -37,4 +39,3 @@
 - Verify image checksum and reset-vector layout.
 - Test on sacrificial hardware with external flash recovery.
 - Document flashing and rollback.
-

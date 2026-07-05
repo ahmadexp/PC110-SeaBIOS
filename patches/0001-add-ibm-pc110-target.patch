@@ -29,7 +29,7 @@ index 4ccc2be..2b465ad 100644
  target-$(CONFIG_COREBOOT) += $(OUT)bios.bin.elf
  target-$(CONFIG_BUILD_VGABIOS) += $(OUT)vgabios.bin
 diff --git a/src/Kconfig b/src/Kconfig
-index 332b52d..b042539 100644
+index 332b52d..72618cc 100644
 --- a/src/Kconfig
 +++ b/src/Kconfig
 @@ -19,6 +19,13 @@ choice
@@ -46,6 +46,22 @@ index 332b52d..b042539 100644
      config CSM
         bool "Build as Compatibility Support Module for EFI BIOS"
         help
+@@ -27,6 +34,15 @@ choice
+ 
+ endchoice
+ 
++    config PC110_CHIPSET_POST
++        bool "Run IBM PC110 chipset POST sequence"
++        depends on PC110
++        default y
++        help
++            Run the recovered PC110 chipset POST sequence when the VL82C420
++            SCAMP signature is present.  The sequence is skipped automatically
++            when the PC110 target is being smoke-tested on QEMU hardware.
++
+     config QEMU_HARDWARE
+         bool "Support hardware found on emulators (QEMU/Xen/KVM/Bochs)" if !QEMU
+         default n
 diff --git a/src/boot.c b/src/boot.c
 index 5c37daf..ca2713c 100644
 --- a/src/boot.c
@@ -184,10 +200,10 @@ index 0000000..e7a6feb
 +const u32 pc110_easysetup_lzw_len = 0;
 diff --git a/src/fw/pc110init.c b/src/fw/pc110init.c
 new file mode 100644
-index 0000000..ba97ee5
+index 0000000..d507bc9
 --- /dev/null
 +++ b/src/fw/pc110init.c
-@@ -0,0 +1,263 @@
+@@ -0,0 +1,354 @@
 +// IBM Palm Top PC110 platform bring-up and Easy-Setup loader.
 +//
 +// Copyright (C) 2026 Ahmad Byagowi
@@ -214,9 +230,36 @@ index 0000000..ba97ee5
 +#define PC110_LZW_END   0x101
 +#define PC110_LZW_FIRST 0x102
 +
++#define PC110_POST_SCAMP_PRESENT  0x0001
++#define PC110_POST_PMCU_PRESENT   0x0002
++#define PC110_POST_PCIC_PRESENT   0x0004
++#define PC110_POST_CHIPSET_SEQ    0x0010
++#define PC110_POST_QEMU_SKIP      0x0020
++#define PC110_POST_CMOS_MISMATCH  0x0040
++
++static const u8 Pc110PostConfig4f[] = {
++    0x11, 0x66, 0x70, 0x0a, 0x1e, 0xb6, 0x8f, 0x65, 0xbf, 0xff
++};
++
 +extern const u8 pc110_easysetup_lzw[];
 +extern const u32 pc110_easysetup_lzw_len;
 +extern void pc110_enter_easysetup(void);
++
++static int
++pc110_scamp_present(u8 scamp_s, u8 scamp_l)
++{
++    return scamp_s == 0x53 && scamp_l == 0x4c;
++}
++
++static u16
++pc110_cmos_checksum(u8 first, u8 last)
++{
++    u16 sum = 0;
++    u8 i;
++    for (i = first; i <= last; i++)
++        sum += rtc_read(i);
++    return sum;
++}
 +
 +static u8
 +pc110_scamp_read(u8 index)
@@ -253,6 +296,55 @@ index 0000000..ba97ee5
 +    return inb(0x03e1);
 +}
 +
++static void
++pc110_post_cmos_check(u16 *flags)
++{
++    u16 calc = pc110_cmos_checksum(0x10, 0x2d);
++    u16 stored = (rtc_read(0x2e) << 8) | rtc_read(0x2f);
++    const char *state = "unset";
++    if (stored) {
++        if (stored == calc)
++            state = "ok";
++        else {
++            state = "mismatch";
++            *flags |= PC110_POST_CMOS_MISMATCH;
++        }
++    }
++
++    dprintf(1, "PC110 POST: CMOS 10-2d checksum calc=%04x stored=%04x %s\n",
++            calc, stored, state);
++}
++
++static void
++pc110_post_chipset_sequence(int scamp_present, u16 *flags)
++{
++    if (!CONFIG_PC110_CHIPSET_POST) {
++        dprintf(1, "PC110 POST: VL82C420 config sequence disabled\n");
++        return;
++    }
++
++    if (runningOnQEMU()) {
++        *flags |= PC110_POST_QEMU_SKIP;
++        dprintf(1, "PC110 POST: VL82C420 config sequence skipped on QEMU\n");
++        return;
++    }
++
++    if (!scamp_present) {
++        dprintf(1, "PC110 POST: VL82C420 config sequence skipped; "
++                "SCAMP signature missing\n");
++        return;
++    }
++
++    dprintf(1, "PC110 POST: VL82C420 config latch sequence "
++            "11 66 70 0a 1e b6 8f 65 bf ff\n");
++
++    u8 i;
++    for (i = 0; i < sizeof(Pc110PostConfig4f); i++)
++        outb(Pc110PostConfig4f[i], 0x004f);
++
++    *flags |= PC110_POST_CHIPSET_SEQ;
++}
++
 +void
 +pc110_preinit(void)
 +{
@@ -278,16 +370,31 @@ index 0000000..ba97ee5
 +    if (!CONFIG_PC110)
 +        return;
 +
++    dprintf(1, "PC110 POST: begin\n");
++
++    u16 post_flags = 0;
++    pc110_post_cmos_check(&post_flags);
++
 +    u8 scamp_s = pc110_scamp_read(0x7a);
 +    u8 scamp_l = pc110_scamp_read(0x7b);
 +    u8 pmcu0 = pc110_pmcu_read(0x00);
 +    u8 pcic_id = pc110_pcic_read(0x00);
++    int scamp_ok = pc110_scamp_present(scamp_s, scamp_l);
++    if (scamp_ok)
++        post_flags |= PC110_POST_SCAMP_PRESENT;
++    if (pmcu0 != 0xff)
++        post_flags |= PC110_POST_PMCU_PRESENT;
++    if (pcic_id != 0xff)
++        post_flags |= PC110_POST_PCIC_PRESENT;
 +
 +    dprintf(1, "PC110: SCAMP signature %02x %02x, PMCU[00]=%02x, PCIC id=%02x\n",
 +            scamp_s, scamp_l, pmcu0, pcic_id);
 +    dprintf(1, "PC110: CMOS click=%02x lcd=%02x power=%02x boot=%02x/%02x\n",
 +            rtc_read(0x44), rtc_read(0x70), rtc_read(0x72),
 +            rtc_read(0x1d), rtc_read(0x1e));
++
++    pc110_post_chipset_sequence(scamp_ok, &post_flags);
++    dprintf(1, "PC110 POST complete: flags=%04x\n", post_flags);
 +}
 +
 +static int
