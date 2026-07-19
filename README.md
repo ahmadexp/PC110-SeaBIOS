@@ -83,6 +83,21 @@ event-poll, and system-configuration paths.  The smoke runner also requires the
 PC110 POST completion marker before accepting `PC110 BIOS BOOT OK` from COM1
 and exiting via QEMU's `isa-debug-exit` device.
 
+If the companion PC110-QEMU tree is available locally, the same smoke image can
+also be tested with its PC110 chipset device attached:
+
+```sh
+PC110_QEMU_ROOT=~/git/pc110-qemu \
+  ./scripts/qemu-pc110-smoke.sh out/pc110-seabios-smoke.bin
+```
+
+That still uses QEMU's normal `pc` machine, because the companion emulator does
+not yet provide a complete `-M pc110` board.  It does exercise the `pc110-chipset`
+I/O shim while proving that POST finishes and the PC110 BIOS compatibility calls
+survive through INT 19h boot.  Use the smoke BIOS for this path; the release
+flash image intentionally omits QEMU-only shadow/debug paths and is not expected
+to complete this marker-based test until a fuller PC110 board model exists.
+
 ## Safety
 
 Do not flash this onto a PC110 without an external programmer, a verified dump

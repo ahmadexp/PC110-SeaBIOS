@@ -26,3 +26,11 @@ These are the hardware facts this BIOS target currently uses.
 The POST stage intentionally avoids undocumented direct writes whose values are
 not yet recovered, including the noted `0x8b`, `0x98`, and `0xf1` paths.  The
 known `0x4f` sequence is skipped automatically on QEMU smoke hardware.
+
+The companion PC110-QEMU tree currently models PC110 devices on top of QEMU's
+standard `pc` board, not as a full `-M pc110` machine.  Use
+`scripts/qemu-pc110-smoke.sh` to run the BIOS smoke test with `pc110-chipset`
+attached; passing that test means POST completed, the smoke floppy booted, and
+the PC110 INT 15h compatibility paths answered correctly through the shimmed
+environment.  Run it with the smoke BIOS image, not the release flash image,
+because the release image intentionally leaves out QEMU-only shadow/debug paths.
